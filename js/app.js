@@ -8,7 +8,7 @@ const freshState = () => ({
   xp: 0,
   stats: { force: 0, endurance: 0, souplesse: 0, savoir: 0 },
   daily: { date: null, challenges: [] },
-  cultureDaily: { date: null, ids: [] }, // suggestions fixées pour la journée
+  cultureDaily: { date: null, ids: [] }, // suggestions fixées pour le mois (date = AAAA-MM)
   weekly: { week: null, quests: [] },
   library: {}, // id -> 'todo' | 'done'
   hidden: [], // suggestions écartées
@@ -210,9 +210,11 @@ function checkAchievements() {
 }
 
 // ---------- Culture ----------
-// Suggestions du jour : choisies une fois par jour, pas remplacées quand on en traite une
+// Suggestions du mois : choisies une fois par mois. Une œuvre faite n'est pas remplacée,
+// une œuvre écartée (« Changer ») est échangée contre une autre du même format.
+const monthKey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 function dailySuggestions() {
-  const today = dayKey();
+  const today = monthKey();
   if (state.cultureDaily?.date !== today) {
     const formats = state.profile.formats.length ? state.profile.formats : FORMATS.map(f => f.id);
     const ids = formats.flatMap(f => suggestions(f).slice(0, 2).map(i => i.id));
@@ -229,7 +231,7 @@ function suggestions(type) {
   const score = item => item.tags.filter(t => ints.includes(t)).length;
   return CATALOG
     .filter(i => (!type || i.type === type) && !state.library[i.id] && !state.hidden.includes(i.id))
-    .map(i => ({ i, s: score(i) + seeded(i.id + dayKey())() * 0.9 }))
+    .map(i => ({ i, s: score(i) + seeded(i.id + monthKey())() * 0.9 }))
     .filter(x => x.s >= 1 || ints.length === 0)
     .sort((a, b) => b.s - a.s)
     .map(x => x.i);
@@ -238,7 +240,16 @@ function suggestions(type) {
 function setWork(id, status) {
   const item = CATALOG.find(i => i.id === id);
   if (!item) return;
-  if (status === 'hide') { state.hidden.push(id); save(); render(); return; }
+  if (status === 'hide') {
+    state.hidden.push(id);
+    const ids = state.cultureDaily.ids;
+    const next = suggestions(item.type).find(i => !ids.includes(i.id));
+    const pos = ids.indexOf(id);
+    if (next && pos >= 0) ids.splice(pos, 1, next.id);
+    save(); render();
+    toast(next ? 'Suggestion changée' : 'Plus d\'autre suggestion de ce type', next ? next.title : 'Ajoute des centres d\'intérêt dans les réglages.');
+    return;
+  }
   if (status === 'done' && state.library[id] !== 'done') {
     state.library[id] = 'done';
     state.counters.done[item.type]++;
@@ -530,7 +541,7 @@ function workCard(item, mode) {
   const f = FORMATS.find(f => f.id === item.type);
   const tags = item.tags.map(t => INTERESTS.find(i => i.id === t)).filter(Boolean);
   const actions = mode === 'suggest'
-    ? `<button class="btn small" data-action="work" data-v="${item.id}" data-s="todo">+ Ma liste</button><button class="btn small primary" data-action="work" data-v="${item.id}" data-s="done">Déjà fait ✓</button><button class="btn small ghost" data-action="work" data-v="${item.id}" data-s="hide" title="Pas pour moi">✕</button>`
+    ? `<button class="btn small" data-action="work" data-v="${item.id}" data-s="todo">+ Ma liste</button><button class="btn small primary" data-action="work" data-v="${item.id}" data-s="done">Déjà fait ✓</button><button class="btn small ghost" data-action="work" data-v="${item.id}" data-s="hide" title="Pas pour moi, propose-moi autre chose">🔄 Changer</button>`
     : mode === 'todo'
       ? `<button class="btn small primary" data-action="work" data-v="${item.id}" data-s="done">Terminé ! +${f.xp} XP</button><button class="btn small ghost" data-action="work" data-v="${item.id}" data-s="remove">Retirer</button>`
       : '';
@@ -564,12 +575,12 @@ function viewCulture() {
       </div>
     </section>
     ${todo.length ? `<h2 class="section">📋 Ma liste (${todo.length})</h2>${todo.map(i => workCard(i, 'todo')).join('')}` : ''}
-    <h2 class="section">✨ Suggestions du jour</h2>
+    <h2 class="section">✨ Suggestions du mois</h2>
     <div class="chips">
       <button class="chip ${!cultureFilter ? 'on' : ''}" data-action="cfilter" data-v="">Tout</button>
       ${FORMATS.map(f => `<button class="chip ${cultureFilter === f.id ? 'on' : ''}" data-action="cfilter" data-v="${f.id}">${f.icon} ${f.label}</button>`).join('')}
     </div>
-    ${sugg.length ? sugg.map(i => workCard(i, 'suggest')).join('') : (suggestions(null).length ? '<p class="muted">C\'est tout pour aujourd\'hui. De nouvelles suggestions t\'attendent demain !</p>' : '<p class="muted">Tu as fait le tour des suggestions pour ces centres d\'intérêt ! Ajoute-en d\'autres dans les réglages.</p>')}
+    ${sugg.length ? sugg.map(i => workCard(i, 'suggest')).join('') : (suggestions(null).length ? '<p class="muted">C\'est tout pour ce mois-ci. De nouvelles suggestions t\'attendent le mois prochain !</p>' : '<p class="muted">Tu as fait le tour des suggestions pour ces centres d\'intérêt ! Ajoute-en d\'autres dans les réglages.</p>')}
     ${done.length ? `<h2 class="section">🏅 Terminés (${done.length})</h2><ul class="log card">${done.map(i => `<li><span>${FORMATS.find(f => f.id === i.type).icon} ${esc(i.title)}</span><span class="muted small">${esc(i.by)}</span></li>`).join('')}</ul>` : ''}`;
 }
 
