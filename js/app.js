@@ -31,7 +31,19 @@ function load() {
 }
 
 let state = load();
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
+const save = () => {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  shareStatus();
+};
+
+// Le service worker n'a pas accès au localStorage : on lui laisse l'état du jour dans un cache dédié
+function shareStatus() {
+  if (!('caches' in window)) return;
+  const status = { date: state.daily.date, allDone: allDoneToday() };
+  caches.open('remise-en-forme-status')
+    .then(c => c.put('status.json', new Response(JSON.stringify(status), { headers: { 'Content-Type': 'application/json' } })))
+    .catch(() => {});
+}
 
 // ---------- Utilitaires ----------
 const $ = sel => document.querySelector(sel);
@@ -277,8 +289,13 @@ function nextChallengeText() {
   return `${ex.icon} ${ex.name} : ${c.amount} ${ex.unit} → +${c.xp} XP`;
 }
 
+function allDoneToday() {
+  return state.daily.date === dayKey() && state.daily.challenges.length > 0 && state.daily.challenges.every(c => c.done);
+}
+
 function reminderTick() {
   if (!state.settings.notifications || !state.profile) return;
+  if (allDoneToday()) return; // défis du jour terminés : pas de rappel
   const now = new Date();
   const hm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const today = dayKey();
@@ -581,7 +598,7 @@ function viewReglages() {
       <hr>
       <p class="small">Notifications de l'appli : <strong>${perm === 'granted' && state.settings.notifications ? 'activées ✅' : perm === 'denied' ? 'bloquées dans le navigateur' : perm === 'unsupported' ? 'non disponibles ici' : 'désactivées'}</strong></p>
       ${perm !== 'granted' || !state.settings.notifications ? '<button class="btn primary" data-action="notif">Activer les notifications</button>' : '<button class="btn small" data-action="test-notif">Tester une notification</button>'}
-      <p class="muted small">Les notifications de l'appli arrivent quand elle est ouverte ou en arrière-plan. Pour des rappels garantis même téléphone en veille, ajoute-les à ton agenda : bouton « + Google Agenda » sur chaque rappel, ou <a href="#" data-action="ics">télécharge le fichier agenda (.ics)</a>.</p>
+      <p class="muted small">Les notifications de l'appli arrivent quand elle est ouverte ou en arrière-plan. Elles ne se déclenchent pas si tes 3 défis du jour sont déjà validés. Pour des rappels garantis même téléphone en veille, ajoute-les à ton agenda (attention : les rappels d'agenda, eux, sonnent même si tes défis sont faits) : bouton « + Google Agenda » sur chaque rappel, ou <a href="#" data-action="ics">télécharge le fichier agenda (.ics)</a>.</p>
     </section>
     <section class="card">
       <h2>🧭 Profil</h2>
