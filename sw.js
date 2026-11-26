@@ -1,5 +1,5 @@
 // Service worker : fonctionnement hors ligne + notifications
-const CACHE = 'remise-en-forme-v2';
+const CACHE = 'remise-en-forme-v3';
 const STATUS_CACHE = 'remise-en-forme-status';
 const ASSETS = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/data.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 

@@ -8,6 +8,7 @@ const freshState = () => ({
   xp: 0,
   stats: { force: 0, endurance: 0, souplesse: 0, savoir: 0 },
   daily: { date: null, challenges: [] },
+  cultureDaily: { date: null, ids: [] }, // suggestions fixées pour la journée
   weekly: { week: null, quests: [] },
   library: {}, // id -> 'todo' | 'done'
   hidden: [], // suggestions écartées
@@ -209,6 +210,20 @@ function checkAchievements() {
 }
 
 // ---------- Culture ----------
+// Suggestions du jour : choisies une fois par jour, pas remplacées quand on en traite une
+function dailySuggestions() {
+  const today = dayKey();
+  if (state.cultureDaily?.date !== today) {
+    const formats = state.profile.formats.length ? state.profile.formats : FORMATS.map(f => f.id);
+    const ids = formats.flatMap(f => suggestions(f).slice(0, 2).map(i => i.id));
+    state.cultureDaily = { date: today, ids };
+    save();
+  }
+  return state.cultureDaily.ids
+    .map(id => CATALOG.find(i => i.id === id))
+    .filter(i => i && !state.library[i.id] && !state.hidden.includes(i.id));
+}
+
 function suggestions(type) {
   const ints = state.profile?.interests || [];
   const score = item => item.tags.filter(t => ints.includes(t)).length;
@@ -536,7 +551,7 @@ function viewCulture() {
   const formats = state.profile.formats.length ? state.profile.formats : FORMATS.map(f => f.id);
   const todo = CATALOG.filter(i => state.library[i.id] === 'todo');
   const done = CATALOG.filter(i => state.library[i.id] === 'done');
-  let sugg = suggestions(cultureFilter || null).filter(i => cultureFilter || formats.includes(i.type)).slice(0, 6);
+  const sugg = dailySuggestions().filter(i => !cultureFilter || i.type === cultureFilter);
   return `
     <h1 class="page-title">Culture</h1>
     <section class="card">
@@ -549,12 +564,12 @@ function viewCulture() {
       </div>
     </section>
     ${todo.length ? `<h2 class="section">📋 Ma liste (${todo.length})</h2>${todo.map(i => workCard(i, 'todo')).join('')}` : ''}
-    <h2 class="section">✨ Suggestions pour toi</h2>
+    <h2 class="section">✨ Suggestions du jour</h2>
     <div class="chips">
       <button class="chip ${!cultureFilter ? 'on' : ''}" data-action="cfilter" data-v="">Tout</button>
       ${FORMATS.map(f => `<button class="chip ${cultureFilter === f.id ? 'on' : ''}" data-action="cfilter" data-v="${f.id}">${f.icon} ${f.label}</button>`).join('')}
     </div>
-    ${sugg.length ? sugg.map(i => workCard(i, 'suggest')).join('') : '<p class="muted">Tu as fait le tour des suggestions pour ces centres d\'intérêt ! Ajoute-en d\'autres dans les réglages.</p>'}
+    ${sugg.length ? sugg.map(i => workCard(i, 'suggest')).join('') : (suggestions(null).length ? '<p class="muted">C\'est tout pour aujourd\'hui. De nouvelles suggestions t\'attendent demain !</p>' : '<p class="muted">Tu as fait le tour des suggestions pour ces centres d\'intérêt ! Ajoute-en d\'autres dans les réglages.</p>')}
     ${done.length ? `<h2 class="section">🏅 Terminés (${done.length})</h2><ul class="log card">${done.map(i => `<li><span>${FORMATS.find(f => f.id === i.type).icon} ${esc(i.title)}</span><span class="muted small">${esc(i.by)}</span></li>`).join('')}</ul>` : ''}`;
 }
 
@@ -677,8 +692,8 @@ document.addEventListener('click', e => {
     case 'del-reminder': state.settings.reminders.splice(+v, 1); save(); render(); break;
     case 'install': deferredInstall?.prompt(); deferredInstall = null; break;
     case 'set-level': state.profile.level = +v; state.daily.date = null; save(); render(); toast('Défis recalculés', 'Tes défis du jour sont adaptés.'); break;
-    case 'set-int': state.profile.interests = toggle(state.profile.interests, v); save(); render(); break;
-    case 'set-fmt': state.profile.formats = toggle(state.profile.formats, v); save(); render(); break;
+    case 'set-int': state.profile.interests = toggle(state.profile.interests, v); state.cultureDaily = { date: null, ids: [] }; save(); render(); break;
+    case 'set-fmt': state.profile.formats = toggle(state.profile.formats, v); state.cultureDaily = { date: null, ids: [] }; save(); render(); break;
     case 'export': exportData(); break;
     case 'reset':
       if (confirm('Effacer toute ta progression ? Cette action est définitive.')) { localStorage.removeItem(KEY); state = freshState(); onboardStep = 0; render(); }
